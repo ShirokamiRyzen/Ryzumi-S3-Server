@@ -43,8 +43,8 @@ if ($method === 'OPTIONS') {
     exit;
 }
 
-// Default Content-Type to XML, but we might override it for PUT responses
-header("Content-Type: application/xml");
+// REMOVED (fixed video issue): Do not default to XML headers globally.
+// header("Content-Type: application/xml");
 
 // Global Exception Handler
 set_exception_handler(function($e) {
@@ -347,15 +347,50 @@ try {
             sendError('NoSuchKey', 'The specified key does not exist', $key, 404);
         }
         
+        // Disable output buffering to prevent memory issues for large files
+        if (ob_get_level()) ob_end_clean();
+        
         $filesize = filesize($objectPath);
         $mime = mime_content_type($objectPath) ?: 'application/octet-stream';
         
-        // Override Content-Type for file downloads
-        header("Content-Type: $mime");
-        header("Content-Length: $filesize");
-        header("ETag: \"" . md5_file($objectPath) . "\"");
-        header("Last-Modified: " . gmdate("D, d M Y H:i:s T", filemtime($objectPath)));
+        // Handle Range Requests (Video Playback)
+        $range = $_SERVER['HTTP_RANGE'] ?? null;
         
+        header("Content-Type: $mime");
+        header("Accept-Ranges: bytes");
+        header("Last-Modified: " . gmdate("D, d M Y H:i:s T", filemtime($objectPath)));
+        header("ETag: \"" . md5_file($objectPath) . "\"");
+        
+        if ($range) {
+            $parts = explode('=', $range);
+            if ($parts[0] == 'bytes') {
+                $range = explode('-', $parts[1]);
+                $start = intval($range[0]);
+                $end = ($range[1] !== "") ? intval($range[1]) : $filesize - 1;
+                $length = $end - $start + 1;
+                
+                http_response_code(206);
+                header("Content-Range: bytes $start-$end/$filesize");
+                header("Content-Length: $length");
+                
+                $fp = fopen($objectPath, 'rb');
+                fseek($fp, $start);
+                
+                // Stream chunks
+                while(!feof($fp) && ($p = ftell($fp)) <= $end) {
+                    if ($p + 8192 > $end) {
+                        echo fread($fp, $end - $p + 1);
+                    } else {
+                        echo fread($fp, 8192);
+                    }
+                    flush();
+                }
+                fclose($fp);
+                exit;
+            }
+        }
+        
+        header("Content-Length: $filesize");
         readfile($objectPath);
         exit;
     }
