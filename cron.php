@@ -1,64 +1,92 @@
 <?php
 // Ryzumi S3 Server - Cleanup Cron Job
-// Run this script periodically (e.g., every hour) to delete expired files from temporary buckets.
+// Accessible via URL: /cron.php?secret_key=YOUR_SECRET_KEY
 
-ini_set('display_errors', 1);
+ini_set('display_errors', 0);
+ini_set('log_errors', 1);
 error_reporting(E_ALL);
 
-echo "[Ryzumi-S3-Cron] Starting cleanup process..." . PHP_EOL;
+function sendCronXml($content, $code = 200) {
+    if (!headers_sent()) {
+        http_response_code($code);
+        header('Content-Type: application/xml');
+    }
+    echo "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n" . $content;
+    exit;
+}
 
 $configFile = __DIR__ . '/config.php';
 if (!file_exists($configFile)) {
-    die("[Error] config.php not found." . PHP_EOL);
+    // If config is missing, we can't verify secret, so deny.
+    sendCronXml("<Error><Code>ConfigurationMissing</Code><Message>Config file not found.</Message></Error>", 500);
 }
 
 $config = require $configFile;
-$baseDir = rtrim($config['base_dir'], '/\\');
 
-if (!isset($config['temp_buckets']) || !is_array($config['temp_buckets'])) {
-    die("[Info] No 'temp_buckets' configured. Nothing to clean." . PHP_EOL);
+// verify secret key
+$secretKey = $config['cron_secret_key'] ?? '';
+$requestKey = $_GET['secret_key'] ?? '';
+
+// Allow CLI execution without key, or Web execution with key
+$isCli = (php_sapi_name() === 'cli');
+
+if (!$isCli) {
+    if (empty($secretKey) || $requestKey !== $secretKey) {
+        sendCronXml("<Error><Code>AccessDenied</Code><Message>Not Allowed</Message></Error>", 403);
+    }
 }
 
-foreach ($config['temp_buckets'] as $bucket => $hours) {
-    echo "[Info] Checking bucket: $bucket (Limit: $hours hours)" . PHP_EOL;
-    
-    $bucketDir = $baseDir . '/' . $bucket;
-    
-    if (!is_dir($bucketDir)) {
-        echo "  - Bucket directory not found: $bucketDir" . PHP_EOL;
-        continue;
-    }
-    
-    $expirationSeconds = $hours * 3600;
+// Start Cleanup
+$baseDir = rtrim($config['base_dir'], '/\\');
+$deletedCount = 0;
+$scannedCount = 0;
+$logDetails = "";
+
+if (isset($config['temp_buckets']) && is_array($config['temp_buckets'])) {
     $now = time();
-    $files = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($bucketDir, RecursiveDirectoryIterator::SKIP_DOTS));
     
-    $count = 0;
-    $deleted = 0;
-    
-    foreach ($files as $file) {
-        if ($file->isDir()) continue;
+    foreach ($config['temp_buckets'] as $bucket => $hours) {
+        $bucketDir = $baseDir . '/' . $bucket;
+        if (!is_dir($bucketDir)) continue;
+
+        $expirationSeconds = $hours * 3600;
         
-        // Skip .multipart directory/files if needed, or clean them too if strictly temporary?
-        // Usually .multipart should be cleaned by AbortIncompleteMultipartUpload logic, 
-        // but if the bucket is temporary, we might as well clean everything.
-        // However, let's play safe and check if it's a file.
-        
-        $filePath = $file->getPathname();
-        $fileAge = $now - $file->getMTime();
-        
-        if ($fileAge > $expirationSeconds) {
-            echo "  - Deleting expired file: " . $file->getFilename() . " (Age: " . round($fileAge/3600, 1) . "h)" . PHP_EOL;
-            if (unlink($filePath)) {
-                $deleted++;
-            } else {
-                echo "    [Error] Failed to delete file." . PHP_EOL;
+        $iterator = new RecursiveIteratorIterator(
+            new RecursiveDirectoryIterator($bucketDir, RecursiveDirectoryIterator::SKIP_DOTS),
+            RecursiveIteratorIterator::CHILD_FIRST
+        );
+
+        foreach ($iterator as $file) {
+            // If it's a directory (and not dot), we might remove it if empty later, 
+            // but main logic is checking files validation.
+            // S3 structure usually Files. Directory cleanup is secondary.
+            
+            if ($file->isFile()) {
+                $scannedCount++;
+                $fileAge = $now - $file->getMTime();
+                if ($fileAge > $expirationSeconds) {
+                    if (unlink($file->getPathname())) {
+                        $deletedCount++;
+                        $logDetails .= "Deleted: " . $file->getFilename() . " (Age: " . round($fileAge/3600, 1) . "h)\n";
+                    }
+                }
             }
         }
-        $count++;
     }
-    
-    echo "  - Scanned $count files. Deleted $deleted files." . PHP_EOL;
 }
 
-echo "[Ryzumi-S3-Cron] Cleanup completed." . PHP_EOL;
+if ($isCli) {
+    echo "Cleanup Completed.\n";
+    echo "Scanned: $scannedCount\n";
+    echo "Deleted: $deletedCount\n";
+    if ($logDetails) echo "Details:\n$logDetails";
+} else {
+    // Return XML Report
+    $xml = "<CronResult>";
+    $xml .= "<Status>Success</Status>";
+    $xml .= "<ScannedFiles>$scannedCount</ScannedFiles>";
+    $xml .= "<DeletedFiles>$deletedCount</DeletedFiles>";
+    // Optional: we don't dump list in XML to save BW unless needed.
+    $xml .= "</CronResult>";
+    sendCronXml($xml, 200);
+}
