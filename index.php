@@ -13,14 +13,14 @@ if (php_sapi_name() == 'cli-server') {
 
 // Disable HTML error reporting
 ini_set('display_errors', 0);
-ini_set('log_errors', 1);
+ini_set('log_errors', 0);
 ini_set('error_log', __DIR__ . '/error.log');
 error_reporting(E_ALL);
 
 // Debug Log
-function debugLog($msg) {
-    file_put_contents(__DIR__ . '/debug.log', "[" . date('c') . "] " . $msg . "\n", FILE_APPEND);
-}
+//function debugLog($msg) {
+//    file_put_contents(__DIR__ . '/debug.log', "[" . date('c') . "] " . $msg . "\n", FILE_APPEND);
+//}
 
 // Manually parse query string for safety in CLI mode
 if (php_sapi_name() == 'cli-server') {
@@ -32,7 +32,7 @@ if (php_sapi_name() == 'cli-server') {
 
 $uri = $_SERVER['REQUEST_URI'];
 $method = $_SERVER['REQUEST_METHOD'];
-debugLog("Request: $method $uri");
+//debugLog("Request: $method $uri");
 
 header("Access-Control-Allow-Origin: *");
 header("Access-Control-Allow-Methods: GET, PUT, POST, DELETE, HEAD, OPTIONS");
@@ -50,7 +50,7 @@ if ($method === 'OPTIONS') {
 set_exception_handler(function($e) {
     $code = 'InternalError';
     $message = $e->getMessage();
-    debugLog("Exception: $message");
+    //debugLog("Exception: $message");
     
     // Ensure we send XML error even if we crashed
     if (!headers_sent()) {
