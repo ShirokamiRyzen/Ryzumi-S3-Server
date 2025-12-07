@@ -13,4 +13,7 @@ return [
         'ryzumi-api' => 24, // 24 hours
         'my-files' => 72,   // 3 days
     ],
+    // Logging Configuration
+    'enable_debug_log' => true,
+    'enable_error_log' => true,
 ];

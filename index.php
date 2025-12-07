@@ -11,16 +11,39 @@ if (php_sapi_name() == 'cli-server') {
     }
 }
 
-// Disable HTML error reporting
+// 1. Load Config
+$configFile = __DIR__ . '/config.php';
+if (!file_exists($configFile)) {
+    $configFile = __DIR__ . '/config.example.php';
+}
+
+if (!file_exists($configFile)) {
+    // If we can't load config, we can't do much. 
+    // Fallback errors to internal error log.
+    error_log("Config file not found in " . __DIR__);
+    http_response_code(500);
+    exit;
+}
+
+$config = require $configFile;
+$dataDir = rtrim($config['base_dir'], '/\\');
+
+// 2. Configure Logging based on Config
+$enableErrorLog = $config['enable_error_log'] ?? false;
+$enableDebugLog = $config['enable_debug_log'] ?? false;
+
 ini_set('display_errors', 0);
-ini_set('log_errors', 0);
+ini_set('log_errors', $enableErrorLog ? 1 : 0);
 ini_set('error_log', __DIR__ . '/error.log');
 error_reporting(E_ALL);
 
-// Debug Log
-//function debugLog($msg) {
-//    file_put_contents(__DIR__ . '/debug.log', "[" . date('c') . "] " . $msg . "\n", FILE_APPEND);
-//}
+// Debug Log Function
+function debugLog($msg) {
+    global $enableDebugLog;
+    if ($enableDebugLog) {
+        file_put_contents(__DIR__ . '/debug.log', "[" . date('c') . "] " . $msg . "\n", FILE_APPEND);
+    }
+}
 
 // Manually parse query string for safety in CLI mode
 if (php_sapi_name() == 'cli-server') {
@@ -50,7 +73,7 @@ if ($method === 'OPTIONS') {
 set_exception_handler(function($e) {
     $code = 'InternalError';
     $message = $e->getMessage();
-    //debugLog("Exception: $message");
+    debugLog("Exception: $message");
     
     // Ensure we send XML error even if we crashed
     if (!headers_sent()) {
@@ -74,18 +97,7 @@ if (!function_exists('getallheaders')) {
     }
 }
 
-$configFile = __DIR__ . '/config.php';
-if (!file_exists($configFile)) {
-    $configFile = __DIR__ . '/config.example.php';
-}
-
-if (!file_exists($configFile)) {
-    throw new Exception("Config file not found");
-}
-
-$config = require $configFile;
-$dataDir = rtrim($config['base_dir'], '/\\');
-
+// Config loaded at bootstrap
 if (!is_dir($dataDir)) {
     if (!mkdir($dataDir, 0777, true) && !is_dir($dataDir)) {
          throw new Exception("Failed to create data directory.");
