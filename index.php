@@ -66,9 +66,6 @@ if ($method === 'OPTIONS') {
     exit;
 }
 
-// REMOVED (fixed video issue): Do not default to XML headers globally.
-// header("Content-Type: application/xml");
-
 // Global Exception Handler
 set_exception_handler(function($e) {
     $code = 'InternalError';
@@ -120,6 +117,24 @@ function sendError($code, $message, $resource = '', $httpCode = 400) {
     sendXml($xml, $httpCode);
 }
 
+// Basic Authentication Helper
+function checkAuth($config) {
+    $headers = getallheaders();
+    $auth = $headers['Authorization'] ?? $headers['authorization'] ?? '';
+    
+    if (empty($auth)) {
+        return false;
+    }
+    
+    // Check for Access Key in the Authorization string
+    // Format: AWS4-HMAC-SHA256 Credential=ACCESS_KEY/...
+    if (strpos($auth, 'Credential=' . $config['access_key']) === false) {
+        return false;
+    }
+    
+    return true;
+}
+
 try {
     $parsedUrl = parse_url($uri);
     $path = $parsedUrl['path'];
@@ -146,6 +161,11 @@ try {
     // === SERVICE: List Buckets ===
     if (!$bucket) {
         if ($method === 'GET') {
+            // Require Auth
+            if (!checkAuth($config)) {
+                sendError('AccessDenied', 'Access Denied', '', 403);
+            }
+
             $buckets = glob($dataDir . '/*', GLOB_ONLYDIR);
             $bucketsXml = '';
             foreach ($buckets as $b) {
@@ -164,6 +184,11 @@ try {
     // === BUCKET OPERATIONS ===
     if ($bucket && !$key) {
         if ($method === 'PUT') {
+            // Require Auth to Create Bucket
+            if (!checkAuth($config)) {
+                sendError('AccessDenied', 'Access Denied', $bucket, 403);
+            }
+
             if (!is_dir($bucketPath)) {
                 mkdir($bucketPath, 0777, true);
             }
@@ -182,6 +207,11 @@ try {
             exit;
         }
         if ($method === 'GET') {
+            // Listing Objects in Bucket - Require Auth
+            if (!checkAuth($config)) {
+                sendError('AccessDenied', 'Access Denied', $bucket, 403);
+            }
+
             if (!is_dir($bucketPath)) {
                 sendError('NoSuchBucket', 'The specified bucket does not exist', $bucket, 404);
             }
@@ -205,11 +235,9 @@ try {
 
     // === OBJECT OPERATIONS ===
 
-    // Ensure bucket exists
+    // Ensure bucket exists - STRICT CHECK
     if (!is_dir($bucketPath)) {
-        if (!mkdir($bucketPath, 0777, true)) {
-            sendError('InternalError', 'Could not create bucket directory', $bucket, 500);
-        }
+         sendError('NoSuchBucket', 'The specified bucket does not exist', $bucket, 404);
     }
 
     $objectPath = $bucketPath . '/' . $key;
@@ -217,6 +245,9 @@ try {
     // --- Multipart: Initiate ---
     // Note: S3 sends uploads= via query string logic
     if (array_key_exists('uploads', $query) && $method === 'POST') {
+        // Require Auth
+        if (!checkAuth($config)) sendError('AccessDenied', 'Access Denied', $key, 403);
+
         debugLog("Multipart Initiate: Bucket=$bucket Key=$key");
         $uploadId = bin2hex(random_bytes(16));
         $mpDir = $dataDir . '/.multipart/' . $bucket . '/' . $uploadId;
@@ -229,6 +260,9 @@ try {
 
     // --- Multipart: Upload Part ---
     if (isset($query['uploadId']) && isset($query['partNumber']) && $method === 'PUT') {
+        // Require Auth
+        if (!checkAuth($config)) sendError('AccessDenied', 'Access Denied', $key, 403);
+
         $uploadId = $query['uploadId'];
         $partNumber = $query['partNumber'];
         debugLog("Multipart Upload Part: $partNumber for $uploadId");
@@ -263,6 +297,9 @@ try {
 
     // --- Multipart: Complete ---
     if (isset($query['uploadId']) && $method === 'POST') {
+        // Require Auth
+        if (!checkAuth($config)) sendError('AccessDenied', 'Access Denied', $key, 403);
+
         $uploadId = $query['uploadId'];
         debugLog("Multipart Complete: $uploadId");
         
@@ -316,6 +353,9 @@ try {
 
     // --- Multipart: Abort ---
     if (isset($query['uploadId']) && $method === 'DELETE') {
+         // Require Auth
+        if (!checkAuth($config)) sendError('AccessDenied', 'Access Denied', $key, 403);
+
         $uploadId = $query['uploadId'];
         $mpDir = $dataDir . '/.multipart/' . $bucket . '/' . $uploadId;
         if (is_dir($mpDir)) {
@@ -330,6 +370,9 @@ try {
     // === STANDARD OPERATIONS ===
 
     if ($method === 'PUT') {
+        // Require Auth
+        if (!checkAuth($config)) sendError('AccessDenied', 'Access Denied', $key, 403);
+
         debugLog("Standard PUT: $key");
         $dir = dirname($objectPath);
         if (!is_dir($dir)) mkdir($dir, 0777, true);
@@ -421,6 +464,9 @@ try {
     }
 
     if ($method === 'DELETE') {
+        // Require Auth
+        if (!checkAuth($config)) sendError('AccessDenied', 'Access Denied', $key, 403);
+
         if (file_exists($objectPath)) {
             unlink($objectPath);
         }
