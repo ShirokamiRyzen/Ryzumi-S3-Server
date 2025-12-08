@@ -111,6 +111,21 @@ function sendXml($content, $code = 200) {
     exit;
 }
 
+function getMimeType($filename) {
+    $ext = strtolower(pathinfo($filename, PATHINFO_EXTENSION));
+    $mimes = [
+        'mp4' => 'video/mp4', 'webm' => 'video/webm', 'mkv' => 'video/x-matroska',
+        'mp3' => 'audio/mpeg', 'wav' => 'audio/wav', 'ogg' => 'audio/ogg', 'm4a' => 'audio/mp4', 'aac' => 'audio/aac',
+        'jpg' => 'image/jpeg', 'jpeg' => 'image/jpeg', 'png' => 'image/png', 'gif' => 'image/gif', 'webp' => 'image/webp',
+        'pdf' => 'application/pdf', 'txt' => 'text/plain', 'xml' => 'application/xml',
+        'json' => 'application/json', 'html' => 'text/html', 'css' => 'text/css', 'js' => 'application/javascript'
+    ];
+    if (isset($mimes[$ext])) return $mimes[$ext];
+    
+    // Fallback to native detection
+    return mime_content_type($filename) ?: 'application/octet-stream';
+}
+
 function sendError($code, $message, $resource = '', $httpCode = 400) {
     debugLog("Error Response: $code - $message");
     $xml = "<Error><Code>$code</Code><Message>$message</Message><Resource>$resource</Resource><RequestId>" . uniqid() . "</RequestId></Error>";
@@ -406,12 +421,13 @@ try {
         if (ob_get_level()) ob_end_clean();
         
         $filesize = filesize($objectPath);
-        $mime = mime_content_type($objectPath) ?: 'application/octet-stream';
+        $mime = getMimeType($objectPath);
         
         // Handle Range Requests (Video Playback)
         $range = $_SERVER['HTTP_RANGE'] ?? null;
         
         header("Content-Type: $mime");
+        header("Content-Disposition: inline; filename=\"" . basename($objectPath) . "\"");
         header("Accept-Ranges: bytes");
         header("Last-Modified: " . gmdate("D, d M Y H:i:s T", filemtime($objectPath)));
         header("ETag: \"" . md5_file($objectPath) . "\"");
@@ -455,7 +471,7 @@ try {
             http_response_code(404);
             exit;
         }
-        $mime = mime_content_type($objectPath) ?: 'application/octet-stream';
+        $mime = getMimeType($objectPath);
         header("Content-Type: $mime");
         header("Content-Length: " . filesize($objectPath));
         header("ETag: \"" . md5_file($objectPath) . "\"");
