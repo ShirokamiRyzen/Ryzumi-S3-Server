@@ -422,6 +422,13 @@ try {
         
         $filesize = filesize($objectPath);
         $mime = getMimeType($objectPath);
+
+        // Anti-Cache for Audio (Cloudflare Fix)
+        if (strpos($mime, 'audio/') === 0) {
+            header("Cache-Control: no-store, no-cache, must-revalidate, max-age=0");
+            header("Cache-Control: post-check=0, pre-check=0", false);
+            header("Pragma: no-cache");
+        }
         
         // Handle Range Requests (Video Playback)
         $range = $_SERVER['HTTP_RANGE'] ?? null;
