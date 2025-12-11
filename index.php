@@ -26,6 +26,13 @@ if (!file_exists($configFile)) {
 }
 
 $config = require $configFile;
+
+// Maintenance Mode Check
+if (isset($config['maintenance_mode']) && $config['maintenance_mode'] === true) {
+    http_response_code(503); // Service Unavailable
+    include __DIR__ . '/mt.php';
+    exit;
+}
 $dataDir = rtrim($config['base_dir'], '/\\');
 
 // 2. Configure Logging based on Config
