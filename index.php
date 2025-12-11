@@ -21,7 +21,18 @@ $config = require $configFile;
 // Maintenance Mode Check
 if (isset($config['maintenance_mode']) && $config['maintenance_mode'] === true) {
     http_response_code(503); // Service Unavailable
-    include __DIR__ . '/mt.php';
+    
+    // Check Accept header to distinguish Browser vs API
+    $accept = $_SERVER['HTTP_ACCEPT'] ?? '';
+    
+    // If it's a GET request and specifically asks for HTML, show the page.
+    // Otherwise (upload, API calls, scripts, etc.), return XML error.
+    if ($_SERVER['REQUEST_METHOD'] === 'GET' && strpos($accept, 'text/html') !== false) {
+        include __DIR__ . '/mt.php';
+    } else {
+        header('Content-Type: application/xml');
+        echo "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Error><Code>ServiceUnavailable</Code><Message>The server is currently in maintenance mode.</Message><Resource></Resource><RequestId>" . uniqid() . "</RequestId></Error>";
+    }
     exit;
 }
 
