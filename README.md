@@ -10,6 +10,7 @@ Designed to work with standard S3 SDKs (like `@aws-sdk/client-s3`), supporting *
 - **Temporary Buckets**: Auto-delete files in specific buckets after a set time (configurable).
 - **Video Streaming**: Supports HTTP Range requests for streaming video playback (MP4, MKV) in browsers.
 - **Web Cron**: Cleanup expired files via a secure URL endpoint.
+- **Maintenance Mode**: Toggleable maintenance mode that serves a friendly HTML page to browsers and an S3-compatible XML error to API clients.
 - **Logging**: Configurable Debug and Error logging.
 
 ## Requirements
@@ -34,6 +35,7 @@ Designed to work with standard S3 SDKs (like `@aws-sdk/client-s3`), supporting *
    Edit `config.php` with your credentials and preferences:
    ```php
    return [
+       'maintenance_mode' => false,
        'access_key' => 'RANDOM_UUID',
        'secret_key' => 'RANDOM_UUID_OR_RANDOM_STRING',
        'base_dir'   => __DIR__ . '/data',
