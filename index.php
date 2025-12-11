@@ -2,15 +2,6 @@
 // Ryzumi S3 Server
 // Compatible with standard S3 SDKs, supporting Multipart Uploads for large files.
 
-// CLI Server Support (php -S)
-if (php_sapi_name() == 'cli-server') {
-    $path = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
-    // Only serve existing files that are NOT valid S3 bucket paths
-    if (is_file(__DIR__ . $path) && file_exists(__DIR__ . $path) && $path !== '/index.php') {
-        return false; 
-    }
-}
-
 // 1. Load Config
 $configFile = __DIR__ . '/config.php';
 if (!file_exists($configFile)) {
@@ -33,6 +24,16 @@ if (isset($config['maintenance_mode']) && $config['maintenance_mode'] === true) 
     include __DIR__ . '/mt.php';
     exit;
 }
+
+// CLI Server Support (php -S)
+if (php_sapi_name() == 'cli-server') {
+    $path = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
+    // Only serve existing files that are NOT valid S3 bucket paths
+    if (is_file(__DIR__ . $path) && file_exists(__DIR__ . $path) && $path !== '/index.php') {
+        return false; 
+    }
+}
+
 $dataDir = rtrim($config['base_dir'], '/\\');
 
 // 2. Configure Logging based on Config
