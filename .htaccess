@@ -1,5 +1,6 @@
 <IfModule mod_rewrite.c>
     RewriteEngine On
+    RewriteRule ^cron\.php$ - [L]
     RewriteRule ^index\.php$ - [L]
     RewriteRule ^(.*)$ index.php [L,QSA]
 </IfModule>
